@@ -239,8 +239,24 @@ const PosixPty = struct {
     pub const GetModeError = error{GetModeFailed};
 
     pub fn getMode(self: Pty) GetModeError!Mode {
+        // On illumos the master side of a pty is not a tty: termios
+        // lives in the ldterm module on the slave stream, and tcgetattr
+        // on the master fails with ENOTTY. Query through a short-lived
+        // slave descriptor instead. (ptsname uses a per-thread buffer
+        // on illumos, so this is safe from each surface's IO thread.)
+        const fd: c_int = if (builtin.os.tag == .illumos) fd: {
+            const name = c.ptsname(self.master) orelse
+                return error.GetModeFailed;
+            const s = c.open(name, c.O_RDWR | c.O_NOCTTY | c.O_CLOEXEC);
+            if (s < 0) return error.GetModeFailed;
+            break :fd s;
+        } else self.master;
+        defer if (builtin.os.tag == .illumos) {
+            _ = c.close(fd);
+        };
+
         var attrs: c.termios = undefined;
-        if (c.tcgetattr(self.master, &attrs) != 0)
+        if (c.tcgetattr(fd, &attrs) != 0)
             return error.GetModeFailed;
 
         return .{
