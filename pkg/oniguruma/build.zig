@@ -103,6 +103,10 @@ fn buildLib(b: *std.Build, module: *std.Build.Module, options: anytype) !*std.Bu
         var flags = std.ArrayList([]const u8).init(b.allocator);
         defer flags.deinit();
         try flags.appendSlice(&.{});
+        // Oniguruma only includes <alloca.h> for non-GNU compilers and
+        // otherwise relies on <stdlib.h> declaring alloca, which illumos'
+        // doesn't.
+        if (t.os.tag == .illumos) try flags.append("-Dalloca=__builtin_alloca");
         lib.addCSourceFiles(.{
             .root = upstream.path(""),
             .flags = flags.items,
