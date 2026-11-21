@@ -16,8 +16,9 @@
         },
         .vaxis = .{
             // rockorager/libvaxis
-            .url = "git+https://github.com/rockorager/libvaxis#1f41c121e8fc153d9ce8c6eb64b2bbab68ad7d23",
-            .hash = "vaxis-0.1.0-BWNV_FUICQAFZnTCL11TUvnUr1Y0_ZdqtXHhd51d76Rn",
+            // NoctOS: sibling checkout of 1f41c121 plus the illumos
+            // termios fix, same convention as libxev above.
+            .path = "../libvaxis",
             .lazy = true,
         },
         .z2d = .{
