@@ -22,6 +22,16 @@ const c = if (builtin.os.tag != .windows) @cImport({
     @cInclude("pwd.h");
 }) else {};
 
+const illumos = struct {
+    extern "c" fn __posix_getpwuid_r(
+        uid: c.uid_t,
+        pwd: *c.struct_passwd,
+        buf: [*]u8,
+        len: usize,
+        result: *?*c.struct_passwd,
+    ) c_int;
+};
+
 // Entry that is retrieved from the passwd API. This only contains the fields
 // we care about.
 pub const Entry = struct {
@@ -37,7 +47,15 @@ pub fn get(alloc: Allocator) !Entry {
     var buf: [1024]u8 = undefined;
     var pw: c.struct_passwd = undefined;
     var pw_ptr: ?*c.struct_passwd = null;
-    const res = c.getpwuid_r(c.getuid(), &pw, &buf, buf.len, &pw_ptr);
+    // illumos keeps the pre-POSIX draft getpwuid_r (which returns a
+    // pointer) under the plain name and maps the POSIX one onto
+    // __posix_getpwuid_r with "#pragma redefine_extname", which
+    // translate-c drops. Call the POSIX symbol directly there.
+    const getpwuid_r = if (builtin.os.tag == .illumos)
+        illumos.__posix_getpwuid_r
+    else
+        c.getpwuid_r;
+    const res = getpwuid_r(c.getuid(), &pw, &buf, buf.len, &pw_ptr);
     if (res != 0) {
         log.warn("error retrieving pw entry code={d}", .{res});
         return Entry{};
