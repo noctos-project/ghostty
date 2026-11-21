@@ -121,7 +121,12 @@ pub fn add(
             );
 
             if (b.systemIntegrationOption("freetype", .{})) {
-                step.linkSystemLibrary2("bzip2", dynamic_link_opts);
+                // pkgsrc and OmniOS ship libbz2 without a bzip2.pc, so
+                // the pkg-config name can't be resolved on illumos.
+                step.linkSystemLibrary2(
+                    if (step.rootModuleTarget().os.tag == .illumos) "bz2" else "bzip2",
+                    dynamic_link_opts,
+                );
                 step.linkSystemLibrary2("freetype2", dynamic_link_opts);
             } else {
                 step.linkLibrary(freetype_dep.artifact("freetype"));
