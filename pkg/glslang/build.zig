@@ -51,7 +51,7 @@ fn buildGlslang(
         .linkage = .static,
     });
     lib.linkLibC();
-    lib.linkLibCpp();
+    linkCxx(b, lib);
     lib.addIncludePath(upstream.path(""));
     lib.addIncludePath(b.path("override"));
     if (target.result.os.tag.isDarwin()) {
@@ -149,4 +149,22 @@ fn buildGlslang(
     );
 
     return lib;
+}
+
+/// Zig's bundled libc++ has no illumos port (no thread API, no locale
+/// layer), so on illumos C++ is compiled against the system libstdc++.
+/// The header directories come from ILLUMOS_CXX_INCLUDE (colon-separated),
+/// defaulting to pkgsrc gcc13. They must be -I rather than -isystem so
+/// libstdc++'s #include_next finds libc's headers after them.
+fn linkCxx(b: *std.Build, step: *std.Build.Step.Compile) void {
+    if (step.rootModuleTarget().os.tag != .illumos) {
+        step.linkLibCpp();
+        return;
+    }
+    const dirs = b.graph.env_map.get("ILLUMOS_CXX_INCLUDE") orelse
+        "/opt/local/gcc13/include/c++/13.4.0:" ++
+            "/opt/local/gcc13/include/c++/13.4.0/x86_64-sun-solaris2.11:" ++
+            "/opt/local/gcc13/include/c++/13.4.0/backward";
+    var it = std.mem.tokenizeScalar(u8, dirs, ':');
+    while (it.next()) |d| step.addIncludePath(.{ .cwd_relative = d });
 }
