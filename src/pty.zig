@@ -103,6 +103,14 @@ const PosixPty = struct {
             @cInclude("termios.h"); // ioctl and constants
             @cInclude("libutil.h"); // openpty()
         }),
+        // illumos has no openpty(); see illumosOpenpty below.
+        .illumos => @cImport({
+            @cInclude("stdlib.h"); // posix_openpt(), grantpt(), unlockpt(), ptsname()
+            @cInclude("fcntl.h");
+            @cInclude("unistd.h"); // ioctl()
+            @cInclude("termios.h"); // termios and TIOC* constants
+            @cInclude("stropts.h"); // I_FIND, I_PUSH
+        }),
         else => @cImport({
             @cInclude("sys/ioctl.h"); // ioctl and constants
             @cInclude("pty.h");
@@ -125,7 +133,10 @@ const PosixPty = struct {
 
         var master_fd: Fd = undefined;
         var slave_fd: Fd = undefined;
-        if (c.openpty(
+        if (comptime builtin.os.tag == .illumos) {
+            if (illumosOpenpty(&master_fd, &slave_fd, &sizeCopy) < 0)
+                return error.OpenptyFailed;
+        } else if (c.openpty(
             &master_fd,
             &slave_fd,
             null,
@@ -158,17 +169,66 @@ const PosixPty = struct {
 
         // Enable UTF-8 mode. I think this is on by default on Linux but it
         // is NOT on by default on macOS so we ensure that it is always set.
-        var attrs: c.termios = undefined;
-        if (c.tcgetattr(master_fd, &attrs) != 0)
-            return error.OpenptyFailed;
-        attrs.c_iflag |= c.IUTF8;
-        if (c.tcsetattr(master_fd, c.TCSANOW, &attrs) != 0)
-            return error.OpenptyFailed;
+        // illumos has no IUTF8 flag: its line discipline takes the
+        // character set from the locale instead.
+        if (comptime builtin.os.tag != .illumos) {
+            var attrs: c.termios = undefined;
+            if (c.tcgetattr(master_fd, &attrs) != 0)
+                return error.OpenptyFailed;
+            attrs.c_iflag |= c.IUTF8;
+            if (c.tcsetattr(master_fd, c.TCSANOW, &attrs) != 0)
+                return error.OpenptyFailed;
+        }
 
         return .{
             .master = master_fd,
             .slave = slave_fd,
         };
+    }
+
+    /// openpty() for illumos, which only has the System V building blocks.
+    /// Opens the master, unlocks it, opens the slave, and makes the slave
+    /// behave as a terminal by pushing the STREAMS modules that Linux and
+    /// the BSDs have built in: ptem (terminal emulation) and ldterm (line
+    /// discipline: echo, canonical mode, signals), plus ttcompat for the
+    /// older ioctls. Without them the shell gets a raw pipe.
+    fn illumosOpenpty(master: *Fd, slave: *Fd, size: *winsize) c_int {
+        const m = c.posix_openpt(c.O_RDWR | c.O_NOCTTY);
+        if (m < 0) return -1;
+        if (c.grantpt(m) < 0 or c.unlockpt(m) < 0) {
+            _ = c.close(m);
+            return -1;
+        }
+        const name = c.ptsname(m) orelse {
+            _ = c.close(m);
+            return -1;
+        };
+        const s = c.open(name, c.O_RDWR | c.O_NOCTTY);
+        if (s < 0) {
+            _ = c.close(m);
+            return -1;
+        }
+
+        // The system may be configured to push these automatically. I_FIND
+        // returns 0 only when the module is not on the stream yet.
+        if (c.ioctl(s, c.I_FIND, "ldterm") == 0) {
+            if (c.ioctl(s, c.I_PUSH, "ptem") < 0 or
+                c.ioctl(s, c.I_PUSH, "ldterm") < 0 or
+                c.ioctl(s, c.I_PUSH, "ttcompat") < 0)
+            {
+                _ = c.close(s);
+                _ = c.close(m);
+                return -1;
+            }
+        }
+
+        // The window size lives in ptem, so it can only be set once that
+        // module is in place.
+        _ = c.ioctl(s, TIOCSWINSZ, @intFromPtr(size));
+
+        master.* = m;
+        slave.* = s;
+        return 0;
     }
 
     pub fn deinit(self: *Pty) void {

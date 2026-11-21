@@ -66,7 +66,7 @@ pub const Runtime = enum {
         return switch (target.os.tag) {
             // The Linux and FreeBSD default is GTK because it is a full
             // featured application.
-            .linux, .freebsd => .gtk,
+            .linux, .freebsd, .illumos => .gtk,
             // Otherwise, we do NONE so we don't create an exe and we create
             // libghostty. On macOS, Xcode is used to build the app that links
             // to libghostty.

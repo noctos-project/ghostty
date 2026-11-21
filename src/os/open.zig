@@ -21,7 +21,7 @@ pub fn open(
     url: []const u8,
 ) !void {
     var exe: std.process.Child = switch (builtin.os.tag) {
-        .linux, .freebsd => .init(
+        .linux, .freebsd, .illumos => .init(
             &.{ "xdg-open", url },
             alloc,
         ),

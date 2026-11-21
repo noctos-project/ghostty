@@ -8,9 +8,10 @@
         // Zig libs
 
         .libxev = .{
-            // mitchellh/libxev
-            .url = "https://github.com/mitchellh/libxev/archive/7f803181b158a10fec8619f793e3b4df515566cb.tar.gz",
-            .hash = "libxev-0.0.0-86vtc2UaEwDfiTKX3iBI-s_hdzfzWQUarT3MUrmUQl-Q",
+            // NoctOS: mitchellh/libxev @ 7f80318 plus an illumos backend,
+            // from the noctos-project/libxev fork checked out next to this
+            // tree.
+            .path = "../libxev",
             .lazy = true,
         },
         .vaxis = .{

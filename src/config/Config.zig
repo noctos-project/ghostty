@@ -3508,7 +3508,7 @@ pub fn loadCliArgs(self: *Config, alloc_gpa: Allocator) !void {
         .windows => {},
 
         // Fast-path if we are Linux/BSD and have no args.
-        .linux, .freebsd => if (std.os.argv.len <= 1) return,
+        .linux, .freebsd, .illumos => if (std.os.argv.len <= 1) return,
 
         // Everything else we have to at least try because it may
         // not use std.os.argv.
@@ -3526,7 +3526,7 @@ pub fn loadCliArgs(self: *Config, alloc_gpa: Allocator) !void {
     //     styling, etc. based on the command.
     //
     // See: https://github.com/Vladimir-csp/xdg-terminal-exec
-    if ((comptime builtin.os.tag == .linux) or (comptime builtin.os.tag == .freebsd)) {
+    if ((comptime builtin.os.tag == .linux) or (comptime builtin.os.tag == .freebsd) or (comptime builtin.os.tag == .illumos)) {
         if (internal_os.xdg.parseTerminalExec(std.os.argv)) |args| {
             const arena_alloc = self._arena.?.allocator();
 

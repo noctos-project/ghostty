@@ -43,7 +43,7 @@ pub fn launchedFromDesktop() bool {
         // the desktop file. Pid comparing catches the scenario where
         // another terminal was launched from a desktop file and then launches
         // Ghostty and Ghostty inherits the env.
-        .linux, .freebsd => ul: {
+        .linux, .freebsd, .illumos => ul: {
             const gio_pid_str = posix.getenv("GIO_LAUNCHED_DESKTOP_FILE_PID") orelse
                 break :ul false;
 
@@ -84,7 +84,7 @@ pub fn desktopEnvironment() DesktopEnvironment {
     return switch (comptime builtin.os.tag) {
         .macos => .macos,
         .windows => .windows,
-        .linux, .freebsd => de: {
+        .linux, .freebsd, .illumos => de: {
             if (@inComptime()) @compileError("Checking for the desktop environment on Linux/BSD must be done at runtime.");
 
             // Use $XDG_SESSION_DESKTOP to determine what DE we are using on Linux
@@ -117,7 +117,7 @@ test "desktop environment" {
     switch (builtin.os.tag) {
         .macos => try testing.expectEqual(.macos, desktopEnvironment()),
         .windows => try testing.expectEqual(.windows, desktopEnvironment()),
-        .linux, .freebsd => {
+        .linux, .freebsd, .illumos => {
             const getenv = std.posix.getenv;
             const setenv = @import("env.zig").setenv;
             const unsetenv = @import("env.zig").unsetenv;
