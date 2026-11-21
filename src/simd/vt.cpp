@@ -6,6 +6,7 @@
 
 #include <simdutf.h>
 #include <utf8.h>
+#include <iterator>
 #include <vector>
 
 #include <simd/index_of.h>
