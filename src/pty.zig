@@ -212,10 +212,7 @@ const PosixPty = struct {
         // The system may be configured to push these automatically. I_FIND
         // returns 0 only when the module is not on the stream yet.
         if (c.ioctl(s, c.I_FIND, "ldterm") == 0) {
-            if (c.ioctl(s, c.I_PUSH, "ptem") < 0 or
-                c.ioctl(s, c.I_PUSH, "ldterm") < 0 or
-                c.ioctl(s, c.I_PUSH, "ttcompat") < 0)
-            {
+            if (!illumosPushTerminalModules(s)) {
                 _ = c.close(s);
                 _ = c.close(m);
                 return -1;
@@ -229,6 +226,43 @@ const PosixPty = struct {
         master.* = m;
         slave.* = s;
         return 0;
+    }
+
+    /// Push ptem, ldterm and ttcompat onto the slave without taking the
+    /// slave as our own controlling terminal.
+    ///
+    /// On illumos a push that turns a stream into a terminal also makes it
+    /// the controlling terminal of the calling process when that process is
+    /// a session leader that has none (strioctl I_PUSH -> strctty() in
+    /// illumos-gate); O_NOCTTY only covers open(). We are a session leader
+    /// whenever the launcher called setsid() before exec. If we then owned
+    /// the terminal, the shell's TIOCSCTTY in childPreExec would fail with
+    /// ENOTTY and it would run without job control.
+    ///
+    /// A process that is not a session leader is never given the terminal,
+    /// so in that case the pushes are done by a forked helper, which
+    /// shares the open slave, and we wait for it. Otherwise push directly.
+    fn illumosPushTerminalModules(s: Fd) bool {
+        if (c.getsid(0) != c.getpid()) return illumosPushDirect(s);
+
+        const pid = std.c.fork();
+        if (pid < 0) return false;
+        if (pid == 0) std.c._exit(if (illumosPushDirect(s)) 0 else 1);
+
+        while (true) {
+            const rc = std.c.waitpid(pid, null, 0);
+            if (rc >= 0 or posix.errno(rc) != .INTR) break;
+        }
+
+        // Judge by the stream itself, not by the exit status: this also
+        // holds if the helper could not be waited for.
+        return c.ioctl(s, c.I_FIND, "ttcompat") == 1;
+    }
+
+    fn illumosPushDirect(s: Fd) bool {
+        return c.ioctl(s, c.I_PUSH, "ptem") >= 0 and
+            c.ioctl(s, c.I_PUSH, "ldterm") >= 0 and
+            c.ioctl(s, c.I_PUSH, "ttcompat") >= 0;
     }
 
     pub fn deinit(self: *Pty) void {
